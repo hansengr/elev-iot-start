@@ -1,0 +1,9 @@
+# WiFi-passord og nøkkelen til boksen. Skal aldri i git.
+secrets.h
+
+# Byggefiler
+build/
+
+# macOS / Windows
+.DS_Store
+Thumbs.db

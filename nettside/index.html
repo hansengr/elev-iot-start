@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Min IoT-boks</title>
+<style>
+  /* Eksempelside: bytt farger, skrift og oppsett til ditt eget. */
+  :root { --bg:#10151c; --panel:#1a222d; --ink:#e8eef5; --muted:#93a1b3; --line:#2b3746;
+          --x:#ff6b6b; --y:#51cf66; --z:#4dabf7; --accent:#ffd43b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+  h1 { margin: 0; font-size: 28px; }
+  h2 { margin: 0 0 12px; font-size: 15px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+  .status { font-weight: 600; padding: 4px 12px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .status.online { color: var(--y); border-color: var(--y); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .value { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .value small { color: var(--muted); display: block; }
+  .value b { font-size: 24px; font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; height: 220px; display: block; background: var(--bg); border-radius: 10px; }
+  .legend { display: flex; gap: 16px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 6px; }
+  .stage { height: 220px; display: grid; place-items: center; perspective: 600px; background: var(--bg); border-radius: 10px; }
+  .box { width: 130px; height: 80px; border-radius: 10px; background: linear-gradient(135deg, var(--z), #1864ab);
+         display: grid; place-items: center; font-weight: 700; transition: transform .9s linear; }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+  input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  button { font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: #222; cursor: pointer; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .row > div { flex: 1 1 140px; }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: scale(0.96); filter: brightness(0.9); }
+  #lagret { color: var(--muted); font-size: 14px; align-self: center; }
+  h3 { margin: 20px 0 4px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 15px; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .svar { margin-top: 20px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--line);
+          border-left: 4px solid var(--line); border-radius: 10px; }
+  .svar small { color: var(--muted); display: block; }
+  .svar.ok { border-left-color: var(--y); }
+  .svar.feil { border-left-color: var(--x); }
+  #melding { margin: 0; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1 id="navn">Min IoT-boks</h1>
+    <span id="status" class="status">Ikke tilkoblet</span>
+  </div>
+
+  <section>
+    <h2>Oppsett</h2>
+    <div class="row">
+      <div><label for="deviceID">deviceID</label><input id="deviceID" inputmode="numeric" placeholder="f.eks. 3"></div>
+      <div><label for="key">Nøkkel (bare for kommandoer)</label><input id="key" type="password" placeholder="16 tegn"></div>
+      <button id="lagre">Lagre</button>
+      <span id="lagret"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Akselerasjon akkurat nå</h2>
+    <div class="values">
+      <div class="value"><small>aksX</small><b id="aksX">–</b> g</div>
+      <div class="value"><small>aksY</small><b id="aksY">–</b> g</div>
+      <div class="value"><small>aksZ</small><b id="aksZ">–</b> g</div>
+    </div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>Siste minutt</h2>
+      <canvas id="graf" width="800" height="440"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--x)"></i>aksX</span>
+        <span><i style="background:var(--y)"></i>aksY</span>
+        <span><i style="background:var(--z)"></i>aksZ</span>
+      </div>
+    </section>
+    <section>
+      <h2>Slik ligger boksen</h2>
+      <div class="stage"><div class="box" id="kloss">ESP</div></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Kommandoer</h2>
+    <div class="row">
+      <button data-command="led" data-value="1">Lys på</button>
+      <button data-command="led" data-value="0">Lys av</button>
+      <div><label for="tekst">Tekst til skjermen</label><input id="tekst" maxlength="18" placeholder="Hei!"></div>
+      <button id="sendTekst">Send tekst</button>
+    </div>
+
+    <h3>Kalibrering</h3>
+    <p class="hint">Legg boksen flatt og helt i ro først. Etterpå viser den X = 0, Y = 0 og Z = 1. Boksen husker det selv om strømmen tas.</p>
+    <div class="row">
+      <button data-command="kalibrer" data-value="1">Kalibrer</button>
+      <button data-command="kalibrer" data-value="0">Fjern kalibrering</button>
+    </div>
+
+    <div class="svar" id="svar">
+      <small>Svar fra boksen</small>
+      <p id="melding">Ingen kommando sendt ennå</p>
+    </div>
+  </section>
+</main>
+
+<script>
+// ====== Oppsett ======
+const API = "https://api.dataskyen.no";
+const ANTALL_PUNKTER = 60;            // grafen viser de siste 60 målingene (ett minutt)
+
+// deviceID og nøkkel lagres i nettleseren din, ikke i koden.
+// Da kan siden ligge åpent på GitHub uten at noen andre får nøkkelen.
+const felt = { deviceID: document.getElementById("deviceID"), key: document.getElementById("key") };
+felt.deviceID.value = localStorage.getItem("deviceID") || "";
+felt.key.value = localStorage.getItem("key") || "";
+
+document.getElementById("lagre").addEventListener("click", () => {
+  localStorage.setItem("deviceID", felt.deviceID.value.trim());
+  localStorage.setItem("key", felt.key.value.trim());
+  historikk.length = 0;
+
+  // Viser ved siden av knappen at noe skjedde, og tar det bort igjen etter tre sekunder
+  const lagret = document.getElementById("lagret");
+  lagret.textContent = felt.deviceID.value.trim() ? "✓ Lagret i denne nettleseren" : "Skriv inn deviceID først";
+  setTimeout(() => { lagret.textContent = ""; }, 3000);
+});
+
+// Skriver i feltet "Svar fra boksen". type er "ok" (grønn kant), "feil" (rød kant) eller ingenting (grå)
+function melding(tekst, type = "") {
+  document.getElementById("melding").textContent = tekst;
+  document.getElementById("svar").className = "svar " + type;
+}
+
+// ====== Hent siste verdier én gang i sekundet ======
+const historikk = [];                 // de siste målingene, eldste først
+
+async function hentSiste() {
+  const deviceID = felt.deviceID.value.trim();
+  if (!deviceID) return;
+
+  try {
+    const svar = await fetch(`${API}/latest.php?deviceID=${encodeURIComponent(deviceID)}`);
+    const data = await svar.json();
+    if (!svar.ok) throw new Error(data.message);
+
+    document.getElementById("navn").textContent = data.name;
+    const status = document.getElementById("status");
+    status.textContent = data.online ? "Tilkoblet" : "Ikke tilkoblet";
+    status.classList.toggle("online", data.online);
+
+    const v = data.values;            // f.eks. v.aksX, v.aksY, v.aksZ, v.gyroX ...
+    for (const navn of ["aksX", "aksY", "aksZ"]) {
+      document.getElementById(navn).textContent = v[navn] == null ? "–" : v[navn].toFixed(2).replace("-0.00", "0.00");
+    }
+
+    if (data.online) {
+      historikk.push(v);
+      if (historikk.length > ANTALL_PUNKTER) historikk.shift();
+      tegnGraf();
+      vippKloss(v);
+    }
+  } catch (feil) {
+    melding("Fikk ikke hentet data: " + feil.message, "feil");
+  }
+}
+setInterval(hentSiste, 1000);         // IKKE oftere enn hvert sekund, hele klassen deler serveren
+hentSiste();
+
+// ====== Graf på canvas, uten bibliotek ======
+function tegnGraf() {
+  const canvas = document.getElementById("graf");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  const MAKS = 2;                     // y-aksen går fra -2 g til +2 g
+  const y = (g) => h / 2 - (g / MAKS) * (h / 2 - 10);
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "#2b3746";        // hjelpelinjer på -1, 0 og +1 g
+  ctx.lineWidth = 1;
+  ctx.fillStyle = "#93a1b3";
+  ctx.font = "20px system-ui";
+  for (const g of [-1, 0, 1]) {
+    ctx.beginPath(); ctx.moveTo(0, y(g)); ctx.lineTo(w, y(g)); ctx.stroke();
+    ctx.fillText(g + " g", 8, y(g) - 6);
+  }
+
+  const farger = { aksX: "#ff6b6b", aksY: "#51cf66", aksZ: "#4dabf7" };
+  for (const navn in farger) {
+    ctx.strokeStyle = farger[navn];
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    historikk.forEach((punkt, i) => {
+      const x = (i / (ANTALL_PUNKTER - 1)) * w;
+      const verdi = Math.max(-MAKS, Math.min(MAKS, punkt[navn] ?? 0));
+      if (i === 0) ctx.moveTo(x, y(verdi)); else ctx.lineTo(x, y(verdi));
+    });
+    ctx.stroke();
+  }
+}
+
+// ====== Kloss som vipper som boksen ======
+// Tyngdekraften peker alltid ned. Ut fra hvordan den fordeler seg på X, Y og Z kan vi regne ut helningen.
+function vippKloss(v) {
+  if (v.aksX == null || v.aksY == null || v.aksZ == null) return;
+  const grader = 180 / Math.PI;
+  const rull = Math.atan2(v.aksY, v.aksZ) * grader;
+  const stamp = Math.atan2(-v.aksX, Math.hypot(v.aksY, v.aksZ)) * grader;
+  document.getElementById("kloss").style.transform = `rotateX(${-stamp}deg) rotateY(${rull}deg)`;
+}
+
+// ====== Send kommandoer ======
+async function sendKommando(command, value) {
+  const key = felt.key.value.trim();
+  if (!key) return melding("Skriv inn nøkkelen under Oppsett først", "feil");
+
+  try {
+    const svar = await fetch(`${API}/send_command.php`, {
+      method: "POST",
+      body: new URLSearchParams({ key, command, value })
+    });
+    const data = await svar.json();
+    if (!svar.ok) throw new Error(data.message);
+    melding(`Sendt: ${command} = ${value}. Venter på boksen ...`);
+    setTimeout(() => sjekkKommando(data.commandID), 2500);
+  } catch (feil) {
+    melding("Kommandoen ble ikke sendt: " + feil.message, "feil");
+  }
+}
+
+// Ser i commands.php om boksen utførte kommandoen
+async function sjekkKommando(commandID) {
+  const svar = await fetch(`${API}/commands.php?deviceID=${encodeURIComponent(felt.deviceID.value.trim())}`);
+  const data = await svar.json();
+  const kommando = (data.commands || []).find((k) => k.commandID === commandID);
+  const tekster = { executed: "utført", failed: "feilet", sent: "hentet av boksen", pending: "venter fortsatt" };
+  const typer = { executed: "ok", failed: "feil" };
+  if (kommando) melding(`${kommando.command} = ${kommando.value}: ${tekster[kommando.status]}`, typer[kommando.status]);
+}
+
+document.querySelectorAll("button[data-command]").forEach((knapp) => {
+  knapp.addEventListener("click", () => sendKommando(knapp.dataset.command, knapp.dataset.value));
+});
+document.getElementById("sendTekst").addEventListener("click", () => {
+  sendKommando("tekst", document.getElementById("tekst").value || "Hei!");
+});
+</script>
+</body>
+</html>
